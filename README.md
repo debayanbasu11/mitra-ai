@@ -110,12 +110,9 @@ The application can also run on compatible macOS and Linux environments.
 ### 1. Clone the repository
 
 ```bash
-git clone <YOUR_REPOSITORY_URL>
+git clone https://github.com/debayanbasu11/mitra-ai.git
 cd mitra-ai
 ```
-
-Replace `<YOUR_REPOSITORY_URL>` with the URL of your Git repository.
-
 ### 2. Install Ollama
 
 Download Ollama from:
