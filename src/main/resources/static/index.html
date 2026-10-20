@@ -1,0 +1,247 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mitra AI — Virtual Friend</title>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: #10141f;
+            color: #eef2ff;
+            font-family: system-ui, sans-serif;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .app {
+            width: min(760px, 100%);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        header {
+            padding: 14px 0 20px;
+            border-bottom: 1px solid #293246;
+        }
+
+        h1 { margin: 0; font-size: 26px; }
+        .subtitle { color: #aab6ce; margin-top: 6px; }
+
+        #messages {
+            flex: 1;
+            padding: 22px 0;
+            overflow-y: auto;
+        }
+
+        .message {
+            padding: 13px 16px;
+            border-radius: 14px;
+            margin: 12px 0;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .user {
+            background: #243b61;
+            margin-left: 12%;
+        }
+
+        .assistant {
+            background: #1b2636;
+            margin-right: 6%;
+        }
+
+        .label {
+            font-size: 12px;
+            color: #9ddfd7;
+            margin-bottom: 5px;
+            font-weight: 700;
+        }
+
+        form {
+            display: flex;
+            gap: 10px;
+            padding-top: 15px;
+            border-top: 1px solid #293246;
+        }
+
+        textarea {
+            flex: 1;
+            resize: vertical;
+            min-height: 52px;
+            max-height: 150px;
+            padding: 14px;
+            border: 1px solid #3a4861;
+            border-radius: 12px;
+            background: #171e2c;
+            color: white;
+            font: inherit;
+        }
+
+        button {
+            border: 0;
+            border-radius: 10px;
+            padding: 12px 16px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        #send { background: #6ee7d8; color: #10212a; }
+        #reset { background: #293246; color: white; }
+        button:disabled { opacity: .5; cursor: wait; }
+
+        #status {
+            color: #aab6ce;
+            min-height: 24px;
+            padding: 8px 0;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+<div class="app">
+    <header>
+        <h1>✦ Mitra AI</h1>
+        <div class="subtitle">
+            A curious mind for your curious mind.
+            Running locally on your computer.
+        </div>
+    </header>
+
+    <main id="messages" aria-live="polite">
+        <div class="message assistant">
+            <div class="label">MITRA</div>
+            Hello! I'm Mitra. What idea, question or mystery
+            would you like us to explore today?
+        </div>
+    </main>
+
+    <div id="status" role="status"></div>
+
+    <form id="chatForm">
+        <textarea id="message"
+                  placeholder="Ask Mitra something..."
+                  aria-label="Your message"
+                  required maxlength="4000"></textarea>
+        <button id="send" type="submit">Send</button>
+        <button id="reset" type="button">Reset</button>
+    </form>
+</div>
+
+<script>
+    const messagesEl = document.getElementById("messages");
+    const form = document.getElementById("chatForm");
+    const input = document.getElementById("message");
+    const sendButton = document.getElementById("send");
+    const resetButton = document.getElementById("reset");
+    const statusEl = document.getElementById("status");
+
+    // This is intentionally in-memory only.
+    // Reloading the page clears the conversation.
+    let history = [];
+    let busy = false;
+
+    function addMessage(role, content) {
+        const bubble = document.createElement("div");
+        bubble.className = "message " +
+            (role === "user" ? "user" : "assistant");
+
+        const label = document.createElement("div");
+        label.className = "label";
+        label.textContent = role === "user" ? "YOU" : "MITRA";
+
+        const text = document.createElement("div");
+        text.textContent = content;
+
+        bubble.append(label, text);
+        messagesEl.appendChild(bubble);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+
+        return bubble;
+    }
+
+    function setBusy(value) {
+        busy = value;
+        sendButton.disabled = value;
+        resetButton.disabled = value;
+        input.disabled = value;
+        statusEl.textContent = value
+            ? "Mitra is thinking locally..."
+            : "";
+    }
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const message = input.value.trim();
+        if (!message || busy) return;
+
+        const previousHistory = [...history];
+
+        addMessage("user", message);
+        input.value = "";
+        setBusy(true);
+
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    message,
+                    history: previousHistory
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error("HTTP " + response.status);
+            }
+
+            const data = await response.json();
+            if (typeof data.reply !== "string") {
+                throw new Error("Invalid response from Mitra");
+            }
+
+            addMessage("assistant", data.reply);
+
+            history.push(
+                { role: "user", content: message },
+                { role: "assistant", content: data.reply }
+            );
+
+            // Keep recent context bounded for the small local model.
+            history = history.slice(-12);
+        } catch (error) {
+            addMessage(
+                "assistant",
+                "I couldn't reach the local AI model. " +
+                "Please check that Ollama is running and try again."
+            );
+            console.error(error);
+        } finally {
+            setBusy(false);
+            input.focus();
+        }
+    });
+
+    resetButton.addEventListener("click", () => {
+        history = [];
+        messagesEl.replaceChildren();
+
+        addMessage(
+            "assistant",
+            "A fresh conversation! What would you like to explore?"
+        );
+        statusEl.textContent = "Conversation reset.";
+        input.focus();
+    });
+</script>
+</body>
+</html>
